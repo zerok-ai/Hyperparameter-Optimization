@@ -1,0 +1,106 @@
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: target
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: target
+  name: target-deployment
+  labels:
+    app: myapp
+    dep: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+      dep: default
+  template:
+    metadata:
+      labels:
+        app: myapp
+        dep: default
+    spec:
+      containers:
+        - name: load-test
+          image: 301129966109.dkr.ecr.us-east-2.amazonaws.com/nodeexample
+          imagePullPolicy: Always
+          ports:
+          - name: m-http
+            containerPort: 3000
+          resources: 
+            requests: 
+              cpu: 150m
+              memory: 170Mi
+            limits:
+              cpu: 170m
+              memory: 200Mi 
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: target
+  name: target-service
+  labels:
+    app: myapp
+    dep: default
+spec:
+  selector:
+    app: myapp
+    dep: default
+  type: ClusterIP # LoadBalancer # NodePort # 
+  ports:
+    - protocol: TCP
+      name: m-http  
+      port: 80
+      targetPort: 3000
+
+---
+
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  namespace: target
+  name: target-servicemonitor
+  labels:
+    app: myapp
+spec:
+  selector:
+    matchLabels:
+      app: myapp
+  endpoints:
+  - port: m-http
+    path: /metrics
+  namespaceSelector:
+    any: true
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: target
+  name: target-ingress
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  rules:
+  - host: target.local
+    http:
+      paths:
+      - backend:
+          service:
+            name: target-service
+            port: 
+              number: 80
+        path: /
+        pathType: Prefix
